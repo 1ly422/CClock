@@ -58,9 +58,9 @@ int main(int argc, char** argv) {
     }
 
     /* Creates a SDL window */
-    SDL_Window* window = SDL_CreateWindow("Shift", /* Title of the SDL window */
+    SDL_Window* window = SDL_CreateWindow("CClock", /* Title of the SDL window */
         SDL_WINDOWPOS_CENTERED, /* Position x of the window */
-        100, /* Position y of the window */
+        SDL_WINDOWPOS_CENTERED, /* Position y of the window */
         WINDOW_WIDTH, /* Width of the window in pixels */
         WINDOW_HEIGHT, /* Height of the window in pixels */
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS); /* Additional flag(s) */
@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
         
 
         char title[80];
-        sprintf_s(title, 80,"%d%d:%d%d:%d%d - Shift", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
+        sprintf_s(title, 80,"%d%d:%d%d:%d%d - CClock", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
 
     	SDL_SetWindowTitle(window, title);
         
