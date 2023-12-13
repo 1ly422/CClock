@@ -45,6 +45,11 @@ bool MakeWindowTransparent(SDL_Window* window, COLORREF colorKey) {
     return SetLayeredWindowAttributes(hWnd, colorKey, 0, LWA_COLORKEY);
 }
 
+SDL_HitTestResult MyHitTestCallback(SDL_Window* win, const SDL_Point* area, void* data) {
+    // For simplicity, we'll consider the whole window draggable
+    return SDL_HITTEST_DRAGGABLE;
+}
+
 int main(int argc, char** argv) {
     
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -64,6 +69,8 @@ int main(int argc, char** argv) {
         printf("SDL window failed to initialise: %s\n", SDL_GetError());
         return 1;
     }
+    // Set the hit-test callback
+    SDL_SetWindowHitTest(window, MyHitTestCallback, NULL);
 
     bool isRunning = true;
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
@@ -115,7 +122,7 @@ int main(int argc, char** argv) {
         printf("Could not retrieve text size\n");
         return 1;
     }
-
+    
     while (isRunning) {
         
        SDL_Event e;
@@ -131,11 +138,11 @@ int main(int argc, char** argv) {
                     ttfDestRect.y = (e.window.data2 - textHeight) / 2;
                 }
             }
+            
             if (e.type == SDL_QUIT) {
                 isRunning = false;
             }
         }
-      
         // Set the draw color to red
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);        // Create a rectangle for the square
        
