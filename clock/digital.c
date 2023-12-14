@@ -50,6 +50,8 @@ SDL_HitTestResult MyHitTestCallback(SDL_Window* win, const SDL_Point* area, void
     return SDL_HITTEST_DRAGGABLE;
 }
 
+
+
 int main(int argc, char** argv) {
     
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -90,6 +92,7 @@ int main(int argc, char** argv) {
     //use the appropriate size depending on the window size
     //TTF_Font* font512 = TTF_OpenFont("digital.ttf", 512);
     TTF_Font* font512 = TTF_OpenFont("digital.ttf", 256);
+    TTF_Font* font64 = TTF_OpenFont("digital.ttf", 48);
     TTF_Font* font128 = TTF_OpenFont("digital.ttf", 128);
     
 
@@ -122,6 +125,12 @@ int main(int argc, char** argv) {
         printf("Could not retrieve text size\n");
         return 1;
     }
+
+    const char* dayName[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+
+    const char* monthName[] = { "January", "February", "March", "April", "May", "June", "July",
+                     "August", "September", "October", "November", "December" };
+
     
     while (isRunning) {
         
@@ -171,12 +180,23 @@ int main(int argc, char** argv) {
         //SDL_RenderCopy(renderer, placeholderTex, NULL, &ttfDestRect);
         
         SDL_Surface* h1Surface = TTF_RenderText_Solid(font512, timeStr, (SDL_Color) { 255,255,255,255 });
-        
         SDL_Texture* h1Tex = SDL_CreateTextureFromSurface(renderer, h1Surface);
-        
+
         int timeW, timeH;
     	SDL_QueryTexture(h1Tex, NULL, NULL, &timeW, &timeH);
 
+        char dateStr[80];
+
+        sprintf_s(dateStr, 80, "%s %d %s %d", dayName[tm.tm_wday], tm.tm_mday, monthName[tm.tm_mon], 1900 + tm.tm_year);
+
+
+        SDL_Surface* daySurface = TTF_RenderText_Solid(font64, dateStr, (SDL_Color) { 255, 255, 255, 255 });
+        SDL_Texture* dayTex = SDL_CreateTextureFromSurface(renderer, daySurface);
+
+        int dayW, dayH;
+        SDL_QueryTexture(dayTex, NULL, NULL, &dayW, &dayH);
+
+        
         SDL_Rect h1Rect = {
             .x = ttfDestRect.x,
             .y = ttfDestRect.y,
@@ -184,7 +204,15 @@ int main(int argc, char** argv) {
             .h = timeH,
         };
 
+        SDL_Rect dayRect = {
+            .x = ttfDestRect.x + 15,
+            .y = ttfDestRect.y - 40,
+            .w = dayW,
+            .h = dayH,
+        };
+
     	SDL_RenderCopy(renderer, h1Tex, NULL, &h1Rect);
+    	SDL_RenderCopy(renderer, dayTex, NULL, &dayRect);
         
 
         // Add window transparency (Magenta will be see-through)
@@ -197,7 +225,10 @@ int main(int argc, char** argv) {
 
         SDL_DestroyTexture(h1Tex);
 		SDL_FreeSurface(h1Surface);
-        
+
+
+        SDL_DestroyTexture(dayTex);
+        SDL_FreeSurface(daySurface);
     }
 
     SDL_DestroyTexture(placeholderTex);
