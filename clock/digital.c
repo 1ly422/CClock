@@ -50,7 +50,25 @@ SDL_HitTestResult MyHitTestCallback(SDL_Window* win, const SDL_Point* area, void
     return SDL_HITTEST_DRAGGABLE;
 }
 
+void render_text(SDL_Renderer* renderer, TTF_Font* font, const char* dateStr, int x, int y) {
+    SDL_Surface* surface = TTF_RenderText_Solid(font, dateStr, (SDL_Color) { 255, 255, 255, 255 });
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
 
+    int textWidth, textHeight;
+    SDL_QueryTexture(texture, NULL, NULL, &textWidth, &textHeight);
+
+    const SDL_Rect textDestRect = {
+        .x = x,
+        .y = y,
+        .w = textWidth,
+        .h = textHeight,
+    };
+
+    SDL_RenderCopy(renderer, texture, NULL, &textDestRect);
+
+    SDL_DestroyTexture(texture);
+	SDL_FreeSurface(surface);
+}
 
 int main(int argc, char** argv) {
     
@@ -156,19 +174,15 @@ int main(int argc, char** argv) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);        // Create a rectangle for the square
        
         const struct tm tm = get_tm();
-        int hour = tm.tm_hour;
-        int min = tm.tm_min;
-        int sec = tm.tm_sec;
+        const int hour = tm.tm_hour;
+        const int min = tm.tm_min;
+        const int sec = tm.tm_sec;
         
 
         char title[80];
         sprintf_s(title, 80,"%d%d:%d%d:%d%d - CClock", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
-
     	SDL_SetWindowTitle(window, title);
-        
-        char timeStr[80];
-        sprintf_s(timeStr, 80,"%d%d : %d%d : %d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
-        
+
 
         int currentWinWidth;
         int currentWinHeight;
@@ -176,45 +190,18 @@ int main(int argc, char** argv) {
 
         // Clear the screen
         SDL_RenderClear(renderer);
-
-        //SDL_RenderCopy(renderer, placeholderTex, NULL, &ttfDestRect);
         
-        SDL_Surface* h1Surface = TTF_RenderText_Solid(font512, timeStr, (SDL_Color) { 255,255,255,255 });
-        SDL_Texture* h1Tex = SDL_CreateTextureFromSurface(renderer, h1Surface);
+        char timeStr[80];
+        sprintf_s(timeStr, 80,"%d%d : %d%d : %d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
+        render_text(renderer, font512, timeStr, ttfDestRect.x, ttfDestRect.y);
+        
+        //SDL_RenderCopy(renderer, placeholderTex, NULL, &ttfDestRect);
 
-        int timeW, timeH;
-    	SDL_QueryTexture(h1Tex, NULL, NULL, &timeW, &timeH);
 
         char dateStr[80];
-
         sprintf_s(dateStr, 80, "%s %d %s %d", dayName[tm.tm_wday], tm.tm_mday, monthName[tm.tm_mon], 1900 + tm.tm_year);
-
-
-        SDL_Surface* daySurface = TTF_RenderText_Solid(font64, dateStr, (SDL_Color) { 255, 255, 255, 255 });
-        SDL_Texture* dayTex = SDL_CreateTextureFromSurface(renderer, daySurface);
-
-        int dayW, dayH;
-        SDL_QueryTexture(dayTex, NULL, NULL, &dayW, &dayH);
-
+        render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40);
         
-        SDL_Rect h1Rect = {
-            .x = ttfDestRect.x,
-            .y = ttfDestRect.y,
-            .w = timeW,
-            .h = timeH,
-        };
-
-        SDL_Rect dayRect = {
-            .x = ttfDestRect.x + 15,
-            .y = ttfDestRect.y - 40,
-            .w = dayW,
-            .h = dayH,
-        };
-
-    	SDL_RenderCopy(renderer, h1Tex, NULL, &h1Rect);
-    	SDL_RenderCopy(renderer, dayTex, NULL, &dayRect);
-        
-
         // Add window transparency (Magenta will be see-through)
         MakeWindowTransparent(window, RGB(0, 0, 0));
 
@@ -222,13 +209,7 @@ int main(int argc, char** argv) {
         SDL_RenderPresent(renderer);
 
         SDL_Delay((u32)floor(DELTA_TIME * 1000.0));
-
-        SDL_DestroyTexture(h1Tex);
-		SDL_FreeSurface(h1Surface);
-
-
-        SDL_DestroyTexture(dayTex);
-        SDL_FreeSurface(daySurface);
+        
     }
 
     SDL_DestroyTexture(placeholderTex);
