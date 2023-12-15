@@ -70,6 +70,54 @@ void render_text(SDL_Renderer* renderer, TTF_Font* font, const char* dateStr, in
 	SDL_FreeSurface(surface);
 }
 
+void render_digit_str(SDL_Renderer* renderer, TTF_Font* font, const char* text, int* x, int* y) {
+
+    SDL_Surface* surface = TTF_RenderText_Solid(font, text, (SDL_Color) { 255, 255, 255, 255 });
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    
+
+    int textWidth, textHeight;
+    SDL_QueryTexture(texture, NULL, NULL, &textWidth, &textHeight);
+    SDL_Rect textDestRect = {
+        .x = *x,
+        .y = *y,
+        .w = textWidth,
+        .h = textHeight,
+    };
+
+
+    int widthDigit;
+    TTF_SizeText(font, "0", &widthDigit, NULL);
+
+    //if its a 1 we place the digit on the right side to align it with other digits
+    if (text[0] == '1') {
+        textDestRect.x = *x + widthDigit - textWidth;
+    }
+    if (isdigit(text[0])) {
+		*x += widthDigit;
+    }
+    else {
+		*x += textWidth;
+    }
+
+    SDL_RenderCopy(renderer, texture, NULL, &textDestRect);
+
+    SDL_DestroyTexture(texture);
+    SDL_FreeSurface(surface);
+}
+
+void render_digit(SDL_Renderer* renderer, TTF_Font* font, int digit, int* x, int* y) {
+    char text[2];
+    if (digit >= 0 && digit <= 9) {
+        sprintf_s(text, 2, "%d", digit);
+    }
+    else {
+        sprintf_s(text, 2, ":");
+    }
+    render_digit_str(renderer, font, text, x, y);
+}
+
+
 int main(int argc, char** argv) {
     
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -116,7 +164,7 @@ int main(int argc, char** argv) {
 
     const char* placeholder = "00 : 00 : 00";
     SDL_Surface* ttfSurface = TTF_RenderText_Solid(font512,
-        placeholder, (SDL_Color){ 13, 213, 13 });
+        placeholder, (SDL_Color){ 13, 13, 13 });
 
     int textWidth, textHeight;
     if (TTF_SizeText(font512, placeholder, &textWidth, &textHeight) < 0) {
@@ -138,11 +186,7 @@ int main(int argc, char** argv) {
     	texW,
     	texH };
 
-    int widthDigit;
-    if (TTF_SizeText(font512, "0", NULL, &widthDigit) < 0) {
-        printf("Could not retrieve text size\n");
-        return 1;
-    }
+    
 
     const char* dayName[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
 
@@ -182,20 +226,32 @@ int main(int argc, char** argv) {
         char title[80];
         sprintf_s(title, 80,"%d%d:%d%d:%d%d - CClock", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
     	SDL_SetWindowTitle(window, title);
-
-
-        int currentWinWidth;
-        int currentWinHeight;
-        SDL_GetWindowSize(window, &currentWinWidth, &currentWinHeight);
-
+        
         // Clear the screen
         SDL_RenderClear(renderer);
+        //SDL_RenderCopy(renderer, placeholderTex, NULL, &ttfDestRect);
         
         char timeStr[80];
         sprintf_s(timeStr, 80,"%d%d : %d%d : %d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
-        render_text(renderer, font512, timeStr, ttfDestRect.x, ttfDestRect.y);
-        
-        //SDL_RenderCopy(renderer, placeholderTex, NULL, &ttfDestRect);
+
+        int xPen = ttfDestRect.x;
+        int yPen = ttfDestRect.y;
+#if 1
+        render_digit(renderer, font512, hour/10, &xPen, &yPen);
+        render_digit(renderer, font512, hour % 10, &xPen, &yPen);
+        render_digit_str(renderer, font512, " ", &xPen, &yPen);
+        render_digit(renderer, font512, -1, &xPen, &yPen);
+        render_digit_str(renderer, font512, " ", &xPen, &yPen);
+        render_digit(renderer, font512, min / 10, &xPen, &yPen);
+        render_digit(renderer, font512, min % 10, &xPen, &yPen);
+        render_digit_str(renderer, font512, " ", &xPen, &yPen);
+        render_digit(renderer, font512, -1, &xPen, &yPen);
+        render_digit_str(renderer, font512, " ", &xPen, &yPen);
+        render_digit(renderer, font512, sec / 10, &xPen, &yPen);
+        render_digit(renderer, font512, sec % 10, &xPen, &yPen);
+#else
+    	render_text(renderer, font512, timeStr, ttfDestRect.x, ttfDestRect.y);
+#endif    
 
 
         char dateStr[80];
@@ -209,7 +265,6 @@ int main(int argc, char** argv) {
         SDL_RenderPresent(renderer);
 
         SDL_Delay((u32)floor(DELTA_TIME * 1000.0));
-        
     }
 
     SDL_DestroyTexture(placeholderTex);
