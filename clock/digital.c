@@ -15,7 +15,7 @@ typedef unsigned char u8;
 typedef float f32;
 typedef uint32_t u32;
 
-#define FPS 60.0
+#define FPS 24.0
 #define DELTA_TIME 1 / FPS
 
 
@@ -157,12 +157,12 @@ int main(int argc, char** argv) {
 
     //use the appropriate size depending on the window size
     //TTF_Font* font512 = TTF_OpenFont("digital.ttf", 512);
-    TTF_Font* font512 = TTF_OpenFont("digital.ttf", 256);
+    TTF_Font* font512 = TTF_OpenFont("digital-mono.ttf", 256);
     TTF_Font* font64 = TTF_OpenFont("digital.ttf", 48);
     TTF_Font* font128 = TTF_OpenFont("digital.ttf", 128);
     
 
-    const char* placeholder = "00 : 00 : 00";
+    const char* placeholder = "00:00:00";
     SDL_Surface* ttfSurface = TTF_RenderText_Solid(font512,
         placeholder, (SDL_Color){ 13, 13, 13 });
 
@@ -186,8 +186,6 @@ int main(int argc, char** argv) {
     	texW,
     	texH };
 
-    
-
     const char* dayName[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
 
     const char* monthName[] = { "January", "February", "March", "April", "May", "June", "July",
@@ -209,7 +207,6 @@ int main(int argc, char** argv) {
                     ttfDestRect.y = (e.window.data2 - textHeight) / 2;
                 }
             }
-            
             if (e.type == SDL_QUIT) {
                 isRunning = false;
             }
@@ -232,11 +229,11 @@ int main(int argc, char** argv) {
         //SDL_RenderCopy(renderer, placeholderTex, NULL, &ttfDestRect);
         
         char timeStr[80];
-        sprintf_s(timeStr, 80,"%d%d : %d%d : %d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
+        sprintf_s(timeStr, 80,"%d%d:%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
 
+#if 0
         int xPen = ttfDestRect.x;
         int yPen = ttfDestRect.y;
-#if 1
         render_digit(renderer, font512, hour/10, &xPen, &yPen);
         render_digit(renderer, font512, hour % 10, &xPen, &yPen);
         render_digit_str(renderer, font512, " ", &xPen, &yPen);
