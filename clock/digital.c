@@ -158,8 +158,7 @@ int main(int argc, char** argv) {
     //use the appropriate size depending on the window size
     //TTF_Font* font512 = TTF_OpenFont("digital.ttf", 512);
     TTF_Font* font512 = TTF_OpenFont("digital-mono.ttf", 256);
-    TTF_Font* font64 = TTF_OpenFont("digital.ttf", 48);
-    TTF_Font* font128 = TTF_OpenFont("digital.ttf", 128);
+    TTF_Font* font64 = TTF_OpenFont("digital-mono.ttf", 48);
     
 
     const char* placeholder = "00:00:00";
@@ -268,8 +267,7 @@ int main(int argc, char** argv) {
     SDL_FreeSurface(ttfSurface);
 
     TTF_CloseFont(font512);
-    //TTF_CloseFont(font256);
-    TTF_CloseFont(font128);
+    TTF_CloseFont(font64);
 
     TTF_Quit();
 
