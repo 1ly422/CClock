@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <time.h>
-#include <math.h>
 #include <stdbool.h>
 
 #include <SDL.h>
@@ -18,7 +17,6 @@ typedef uint32_t u32;
 #define FPS 24.0
 #define DELTA_TIME 1 / FPS
 
-
 struct tm get_tm() {
     time_t currentTime;
     time(&currentTime);
@@ -34,7 +32,8 @@ struct tm get_tm() {
 bool MakeWindowTransparent(SDL_Window* window, COLORREF colorKey) {
     // Get window handle (https://stackoverflow.com/a/24118145/3357935)
     SDL_SysWMinfo wmInfo;
-    SDL_VERSION(&wmInfo.version);  // Initialize wmInfo
+	// Initialize wmInfo
+    SDL_VERSION(&wmInfo.version);
     SDL_GetWindowWMInfo(window, &wmInfo);
     HWND hWnd = wmInfo.info.win.window;
 
@@ -117,6 +116,41 @@ void render_digit(SDL_Renderer* renderer, TTF_Font* font, int digit, int* x, int
     render_digit_str(renderer, font, text, x, y);
 }
 
+#define SET_ID 1
+#define EXIT_ID 2
+
+int show_context_menu(SDL_Window* window, int x, int y) {
+    //Create the popup MENU
+	HMENU hpopupMenu = CreatePopupMenu();
+    //Insert wanted options here
+    /*
+	InsertMenuA(hpopupMenu, 0, MF_BYPOSITION | MF_STRING,
+        SET_ID, "Set");
+    InsertMenuA(hpopupMenu, 0, MF_BYPOSITION | MF_STRING,
+        EXIT_ID, "Exit");
+    */
+    AppendMenuA(hpopupMenu, MF_STRING, SET_ID, "Set Time");
+    AppendMenuA(hpopupMenu, MF_STRING, EXIT_ID, "Exit");
+
+    //Get the window HWND from SDL_Window
+    SDL_SysWMinfo wmInfo;
+    SDL_VERSION(&wmInfo.version);
+    SDL_GetWindowWMInfo(window, &wmInfo);
+    HWND hwnd = wmInfo.info.win.window;
+
+	SetForegroundWindow(hwnd);
+
+	POINT point = { .x = x, .y = y };
+    ClientToScreen(hwnd, &point);
+    const int itemSelected = TrackPopupMenu(hpopupMenu,
+        TPM_BOTTOMALIGN | TPM_LEFTALIGN,
+        point.x, point.y, 0, hwnd, NULL);
+
+    // Clean up
+    DestroyMenu(hpopupMenu);
+
+    return itemSelected;
+}
 
 int main(int argc, char** argv) {
     
@@ -124,7 +158,6 @@ int main(int argc, char** argv) {
         printf("SDL failed to initialise: %s\n", SDL_GetError());
         return 1;
     }
-
     /* Creates a SDL window */
     SDL_Window* window = SDL_CreateWindow("CClock", /* Title of the SDL window */
         SDL_WINDOWPOS_CENTERED, /* Position x of the window */
@@ -138,7 +171,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     // Set the hit-test callback
-    SDL_SetWindowHitTest(window, MyHitTestCallback, NULL);
+    //SDL_SetWindowHitTest(window, MyHitTestCallback, NULL);
 
     bool isRunning = true;
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
@@ -190,7 +223,7 @@ int main(int argc, char** argv) {
     const char* monthName[] = { "January", "February", "March", "April", "May", "June", "July",
                      "August", "September", "October", "November", "December" };
 
-    
+    SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
     while (isRunning) {
         
        SDL_Event e;
@@ -200,13 +233,34 @@ int main(int argc, char** argv) {
                     isRunning = false;
 		        }
 	        }
-            if (e.type == SDL_WINDOWEVENT) {
+            else if (e.type == SDL_WINDOWEVENT) {
                 if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
                     ttfDestRect.x = (e.window.data1 - textWidth) / 2;
                     ttfDestRect.y = (e.window.data2 - textHeight) / 2;
                 }
             }
-            if (e.type == SDL_QUIT) {
+            else if (e.type == SDL_MOUSEBUTTONDOWN) {
+	            if (e.button.button == SDL_BUTTON_RIGHT) {
+                    int x, y;
+                    SDL_GetMouseState(&x, &y);
+                    const bool itemSelected = show_context_menu(window, x, y);
+                    if (!itemSelected) {
+                        fprintf(stderr, "Context menu failed to show\n");
+                    }
+	            }
+            }
+            else if (e.type == SDL_SYSWMEVENT) {
+	            if (e.syswm.msg->msg.win.msg == WM_COMMAND) {
+	            	if (LOWORD(e.syswm.msg->msg.win.wParam) == EXIT_ID) {
+                        printf("Exit\n");
+	            		isRunning = false;
+	            	}
+                    else if (LOWORD(e.syswm.msg->msg.win.wParam) == SET_ID) {
+                        printf("Set time:: TODO\n");
+                    }
+	            }
+            }
+            else if (e.type == SDL_QUIT) {
                 isRunning = false;
             }
         }
@@ -268,7 +322,7 @@ int main(int argc, char** argv) {
 
     TTF_CloseFont(font512);
     TTF_CloseFont(font64);
-
+    
     TTF_Quit();
 
     /* Frees memory */
