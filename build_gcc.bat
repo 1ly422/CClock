@@ -1,0 +1,1 @@
+gcc clock/digital.c bin/SDL2.dll bin/SDL2_ttf.dll -I./SDL2/include -I./SDL2_ttf-2.20.2/include -O3 -o bin/cclock.exe -mwindows

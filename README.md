@@ -9,4 +9,10 @@
 ![CClock app](screenshot.png "Title")
 
 # Build
--	Compile on Windows using MSVC and gcc-mingw. 
+-	Compile on Windows using MSVC and gcc-mingw:
+
+### MSVC
+-	Just open to .sln file provided and everything should be already setup properly
+### GCC
+-	Create a bin directory and put the SDL2.dll, SDL2_ttf.dll files and the digital-mono.ttf.
+-	Run the build_gcc.bat file.
