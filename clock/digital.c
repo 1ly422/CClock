@@ -1,14 +1,22 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdbool.h>
+#include <math.h>
+
+#if !(_MSC_VER && !__INTEL_COMPILER) 
+	#define SDL_MAIN_HANDLED //gcc need this line smhw, it basically undef main macro defined by SDL
+#endif
 
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include <SDL_syswm.h>
 
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
 #define WINDOW_WIDTH 1600
 #define WINDOW_HEIGHT 350
-
 
 typedef unsigned char u8;
 typedef float f32;
@@ -17,14 +25,45 @@ typedef uint32_t u32;
 #define FPS 24.0
 #define DELTA_TIME 1 / FPS
 
+//https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
+
+enum CClockMode {
+    CCLOCK_CLOCK,
+    CCLOCK_TIMER,
+    CCLOCK_CHRONO,
+};
+
 struct tm get_tm() {
     time_t currentTime;
     time(&currentTime);
     // Convert the current time to a local time structure
-    struct tm localTime = {0};
+    struct tm localTime = { 0 };
     localtime_s(&localTime, &currentTime);
 
     return localTime;
+}
+
+struct tm get_tm_chrono(unsigned long offsetBySeconds) {
+    struct tm tm = get_tm();
+    tm.tm_sec += offsetBySeconds;
+    time_t futureTime = mktime(&tm);
+
+    // Convert the current time to a local time structure
+    struct tm localTime = { 0 };
+    localtime_s(&localTime, &futureTime);
+
+    return localTime;
+}
+
+// return time difference in seconds
+double get_tm_diff(struct tm* lhs, struct tm* rhs) {
+
+    time_t t1 = mktime(lhs);
+    time_t t2 = mktime(rhs);
+
+    double diff = difftime(t2, t1);
+
+    return diff;
 }
 
 
@@ -32,7 +71,7 @@ struct tm get_tm() {
 bool MakeWindowTransparent(SDL_Window* window, COLORREF colorKey) {
     // Get window handle (https://stackoverflow.com/a/24118145/3357935)
     SDL_SysWMinfo wmInfo;
-	// Initialize wmInfo
+    // Initialize wmInfo
     SDL_VERSION(&wmInfo.version);
     SDL_GetWindowWMInfo(window, &wmInfo);
     HWND hWnd = wmInfo.info.win.window;
@@ -44,13 +83,21 @@ bool MakeWindowTransparent(SDL_Window* window, COLORREF colorKey) {
     return SetLayeredWindowAttributes(hWnd, colorKey, 0, LWA_COLORKEY);
 }
 
-SDL_HitTestResult MyHitTestCallback(SDL_Window* win, const SDL_Point* area, void* data) {
-    // For simplicity, we'll consider the whole window draggable
-    return SDL_HITTEST_DRAGGABLE;
+SDL_HitTestResult MyHitTestCallback(SDL_Window* win, const SDL_Point* point, void* data) {
+    // We'll consider the horz upper part of the window draggable and the bottom part normal
+    int w, h;
+    SDL_GetWindowSize(win, &w, &h);
+    SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h * .5 };
+    if (SDL_PointInRect(point, &rect)) {
+        SDL_Log("HIT-TEST: DRAGGABLE\n");
+        return SDL_HITTEST_DRAGGABLE;
+    }
+    SDL_Log("HIT-TEST: NORMAL\n");
+    return SDL_HITTEST_NORMAL;
 }
 
-void render_text(SDL_Renderer* renderer, TTF_Font* font, const char* dateStr, int x, int y) {
-    SDL_Surface* surface = TTF_RenderText_Solid(font, dateStr, (SDL_Color) { 255, 255, 255, 255 });
+void render_text(SDL_Renderer* renderer, TTF_Font* font, const char* dateStr, int x, int y, SDL_Color color) {
+    SDL_Surface* surface = TTF_RenderText_Solid(font, dateStr, color);
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
 
     int textWidth, textHeight;
@@ -66,14 +113,14 @@ void render_text(SDL_Renderer* renderer, TTF_Font* font, const char* dateStr, in
     SDL_RenderCopy(renderer, texture, NULL, &textDestRect);
 
     SDL_DestroyTexture(texture);
-	SDL_FreeSurface(surface);
+    SDL_FreeSurface(surface);
 }
 
 void render_digit_str(SDL_Renderer* renderer, TTF_Font* font, const char* text, int* x, int* y) {
 
     SDL_Surface* surface = TTF_RenderText_Solid(font, text, (SDL_Color) { 255, 255, 255, 255 });
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-    
+
 
     int textWidth, textHeight;
     SDL_QueryTexture(texture, NULL, NULL, &textWidth, &textHeight);
@@ -93,10 +140,10 @@ void render_digit_str(SDL_Renderer* renderer, TTF_Font* font, const char* text, 
         textDestRect.x = *x + widthDigit - textWidth;
     }
     if (isdigit(text[0])) {
-		*x += widthDigit;
+        *x += widthDigit;
     }
     else {
-		*x += textWidth;
+        *x += textWidth;
     }
 
     SDL_RenderCopy(renderer, texture, NULL, &textDestRect);
@@ -116,20 +163,43 @@ void render_digit(SDL_Renderer* renderer, TTF_Font* font, int digit, int* x, int
     render_digit_str(renderer, font, text, x, y);
 }
 
-#define SET_ID 1
-#define EXIT_ID 2
+enum {
+    CLOCK_MODE_ID = 1,
+    CHRONO_MODE_10s_ID,
+    CHRONO_MODE_10M_ID,
+    CHRONO_MODE_15M_ID,
+    CHRONO_MODE_30M_ID,
+    CHRONO_MODE_1H_ID,
+    CHRONO_MODE_2H_ID,
+    CHRONO_MODE_3H_ID,
+    CHRONO_MODE_4H_ID,
+    CHRONO_MODE_5H_ID,
+    EXIT_ID,
+};
 
 int show_context_menu(SDL_Window* window, int x, int y) {
     //Create the popup MENU
-	HMENU hpopupMenu = CreatePopupMenu();
+    HMENU hpopupMenu = CreatePopupMenu();
+    HMENU hSubMenu = CreatePopupMenu();
     //Insert wanted options here
     /*
-	InsertMenuA(hpopupMenu, 0, MF_BYPOSITION | MF_STRING,
-        SET_ID, "Set");
+    InsertMenuA(hpopupMenu, 0, MF_BYPOSITION | MF_STRING,
+        CHRONO_MODE_ID, "Set");
     InsertMenuA(hpopupMenu, 0, MF_BYPOSITION | MF_STRING,
         EXIT_ID, "Exit");
     */
-    AppendMenuA(hpopupMenu, MF_STRING, SET_ID, "Set Time");
+    AppendMenuA(hpopupMenu, MF_STRING, CLOCK_MODE_ID, "Clock Mode");
+    AppendMenuA(hpopupMenu, MF_POPUP, (UINT_PTR)hSubMenu, "Chrono Mode");
+    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_10s_ID, "10s");
+    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_10M_ID, "10min");
+    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_15M_ID, "15min");
+    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_30M_ID, "30min");
+    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_1H_ID, "1h");
+    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_2H_ID, "2h");
+    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_3H_ID, "3h");
+    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_4H_ID, "4h");
+    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_5H_ID, "5h");
+
     AppendMenuA(hpopupMenu, MF_STRING, EXIT_ID, "Exit");
 
     //Get the window HWND from SDL_Window
@@ -138,22 +208,23 @@ int show_context_menu(SDL_Window* window, int x, int y) {
     SDL_GetWindowWMInfo(window, &wmInfo);
     HWND hwnd = wmInfo.info.win.window;
 
-	SetForegroundWindow(hwnd);
+    SetForegroundWindow(hwnd);
 
-	POINT point = { .x = x, .y = y };
+    POINT point = { .x = x, .y = y };
     ClientToScreen(hwnd, &point);
     const int itemSelected = TrackPopupMenu(hpopupMenu,
         TPM_BOTTOMALIGN | TPM_LEFTALIGN,
         point.x, point.y, 0, hwnd, NULL);
 
     // Clean up
+    DestroyMenu(hSubMenu);
     DestroyMenu(hpopupMenu);
 
     return itemSelected;
 }
 
 int main(int argc, char** argv) {
-    
+
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
         printf("SDL failed to initialise: %s\n", SDL_GetError());
         return 1;
@@ -165,13 +236,15 @@ int main(int argc, char** argv) {
         WINDOW_WIDTH, /* Width of the window in pixels */
         WINDOW_HEIGHT, /* Height of the window in pixels */
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS); /* Additional flag(s) */
-    
+
     if (!window) {
         printf("SDL window failed to initialise: %s\n", SDL_GetError());
         return 1;
     }
     // Set the hit-test callback
-    //SDL_SetWindowHitTest(window, MyHitTestCallback, NULL);
+    if (SDL_SetWindowHitTest(window, MyHitTestCallback, NULL) < 0) {
+        printf("Error with SDL_SetWindowHitTest: %s", SDL_GetError());
+    }
 
     bool isRunning = true;
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
@@ -192,11 +265,14 @@ int main(int argc, char** argv) {
     //TTF_Font* font512 = TTF_OpenFont("digital.ttf", 512);
     TTF_Font* font512 = TTF_OpenFont("digital-mono.ttf", 256);
     TTF_Font* font64 = TTF_OpenFont("digital-mono.ttf", 48);
-    
+    if (!font512 || !font64) {
+        printf("Could not load font\n");
+        return 1;
+    }
 
     const char* placeholder = "00:00:00";
     SDL_Surface* ttfSurface = TTF_RenderText_Solid(font512,
-        placeholder, (SDL_Color){ 13, 13, 13 });
+        placeholder, (SDL_Color) { 13, 13, 13 });
 
     int textWidth, textHeight;
     if (TTF_SizeText(font512, placeholder, &textWidth, &textHeight) < 0) {
@@ -213,26 +289,29 @@ int main(int argc, char** argv) {
     int winW, winH;
     SDL_GetWindowSize(window, &winW, &winH);
     SDL_Rect ttfDestRect = {
-    	(winW - textWidth) / 2,
+        (winW - textWidth) / 2,
         (winH - textHeight) / 2,
-    	texW,
-    	texH };
+        texW,
+        texH };
 
     const char* dayName[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
 
     const char* monthName[] = { "January", "February", "March", "April", "May", "June", "July",
                      "August", "September", "October", "November", "December" };
 
+    enum CClockMode mode = CCLOCK_CLOCK;
+    struct tm chronoTargetTm = get_tm();
+
     SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
     while (isRunning) {
-        
-       SDL_Event e;
+
+        SDL_Event e;
         while (SDL_PollEvent(&e)) {
-	        if (e.type == SDL_KEYDOWN) {
-		        if (e.key.keysym.sym == SDLK_ESCAPE) {
+            if (e.type == SDL_KEYDOWN) {
+                if (e.key.keysym.sym == SDLK_ESCAPE) {
                     isRunning = false;
-		        }
-	        }
+                }
+            }
             else if (e.type == SDL_WINDOWEVENT) {
                 if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
                     ttfDestRect.x = (e.window.data1 - textWidth) / 2;
@@ -240,74 +319,121 @@ int main(int argc, char** argv) {
                 }
             }
             else if (e.type == SDL_MOUSEBUTTONDOWN) {
-	            if (e.button.button == SDL_BUTTON_RIGHT) {
+                if (e.button.button == SDL_BUTTON_RIGHT) {
                     int x, y;
                     SDL_GetMouseState(&x, &y);
                     const bool itemSelected = show_context_menu(window, x, y);
                     if (!itemSelected) {
                         fprintf(stderr, "Context menu failed to show\n");
                     }
-	            }
+                }
             }
             else if (e.type == SDL_SYSWMEVENT) {
-	            if (e.syswm.msg->msg.win.msg == WM_COMMAND) {
-	            	if (LOWORD(e.syswm.msg->msg.win.wParam) == EXIT_ID) {
-                        printf("Exit\n");
-	            		isRunning = false;
-	            	}
-                    else if (LOWORD(e.syswm.msg->msg.win.wParam) == SET_ID) {
-                        printf("Set time:: TODO\n");
+                if (e.syswm.msg->msg.win.msg == WM_COMMAND) {
+                    switch (LOWORD(e.syswm.msg->msg.win.wParam)) {
+                    case EXIT_ID:
+                        isRunning = false;
+                        break;
+                    case CHRONO_MODE_10s_ID:
+                        mode = CCLOCK_CHRONO;
+                        chronoTargetTm = get_tm_chrono(10);
+                        break;
+                    case CHRONO_MODE_10M_ID:
+                        mode = CCLOCK_CHRONO;
+                        chronoTargetTm = get_tm_chrono(60 * 10);
+                        break;
+                    case CHRONO_MODE_15M_ID:
+                        mode = CCLOCK_CHRONO;
+                        chronoTargetTm = get_tm_chrono(60 * 15);
+                        break;
+                    case CHRONO_MODE_30M_ID:
+                        mode = CCLOCK_CHRONO;
+                        chronoTargetTm = get_tm_chrono(60 * 30);
+                        break;
+                    case CHRONO_MODE_1H_ID:
+                        mode = CCLOCK_CHRONO;
+                        chronoTargetTm = get_tm_chrono(3600);
+                        break;
+                    case CHRONO_MODE_2H_ID:
+                        mode = CCLOCK_CHRONO;
+                        chronoTargetTm = get_tm_chrono(2 * 3600);
+                        break;
+                    case CHRONO_MODE_3H_ID:
+                        mode = CCLOCK_CHRONO;
+                        chronoTargetTm = get_tm_chrono(3 * 3600);
+                        break;
+                    case CHRONO_MODE_4H_ID:
+                        mode = CCLOCK_CHRONO;
+                        chronoTargetTm = get_tm_chrono(4 * 3600);
+                        break;
+                    case CHRONO_MODE_5H_ID:
+                        mode = CCLOCK_CHRONO;
+                        chronoTargetTm = get_tm_chrono(5 * 3600);
+                        break;
+                    case CLOCK_MODE_ID:
+                        mode = CCLOCK_CLOCK;
+                        break;
                     }
-	            }
+                }
             }
             else if (e.type == SDL_QUIT) {
                 isRunning = false;
             }
         }
+
+
         // Set the draw color to red
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);        // Create a rectangle for the square
-       
-        const struct tm tm = get_tm();
-        const int hour = tm.tm_hour;
-        const int min = tm.tm_min;
-        const int sec = tm.tm_sec;
-        
-
-        char title[80];
-        sprintf_s(title, 80,"%d%d:%d%d:%d%d - CClock", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
-    	SDL_SetWindowTitle(window, title);
-        
         // Clear the screen
         SDL_RenderClear(renderer);
         //SDL_RenderCopy(renderer, placeholderTex, NULL, &ttfDestRect);
-        
+
+        char title[80];
         char timeStr[80];
-        sprintf_s(timeStr, 80,"%d%d:%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
 
-#if 0
-        int xPen = ttfDestRect.x;
-        int yPen = ttfDestRect.y;
-        render_digit(renderer, font512, hour/10, &xPen, &yPen);
-        render_digit(renderer, font512, hour % 10, &xPen, &yPen);
-        render_digit_str(renderer, font512, " ", &xPen, &yPen);
-        render_digit(renderer, font512, -1, &xPen, &yPen);
-        render_digit_str(renderer, font512, " ", &xPen, &yPen);
-        render_digit(renderer, font512, min / 10, &xPen, &yPen);
-        render_digit(renderer, font512, min % 10, &xPen, &yPen);
-        render_digit_str(renderer, font512, " ", &xPen, &yPen);
-        render_digit(renderer, font512, -1, &xPen, &yPen);
-        render_digit_str(renderer, font512, " ", &xPen, &yPen);
-        render_digit(renderer, font512, sec / 10, &xPen, &yPen);
-        render_digit(renderer, font512, sec % 10, &xPen, &yPen);
-#else
-    	render_text(renderer, font512, timeStr, ttfDestRect.x, ttfDestRect.y);
-#endif    
+        if (mode == CCLOCK_CLOCK) {
+            const struct tm tm = get_tm();
+            const int hour = tm.tm_hour;
+            const int min = tm.tm_min;
+            const int sec = tm.tm_sec;
+            SDL_Color clockColor = (SDL_Color){ 255, 255, 255, 255 };
+
+            sprintf_s(title, 80, "%d%d:%d%d:%d%d - CClock", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
+            SDL_SetWindowTitle(window, title);
+
+            sprintf_s(timeStr, 80, "%d%d:%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
+
+            char dateStr[80];
+            sprintf_s(dateStr, 80, "%s %d %s %d", dayName[tm.tm_wday], tm.tm_mday, monthName[tm.tm_mon], 1900 + tm.tm_year);
+
+            render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40, clockColor);
+            render_text(renderer, font512, timeStr, ttfDestRect.x, ttfDestRect.y, clockColor);
+
+        }
+        else if (mode == CCLOCK_CHRONO) {
+            struct tm currentTm = get_tm();
+            double diff = get_tm_diff(&currentTm, &chronoTargetTm);
+            SDL_Color chronoColor = (SDL_Color){ 255, 255, 255, 255 };
+            if (diff <= 0) {
+                chronoColor = (SDL_Color){ 255, 87, 51, 255 };
+                diff = 0;
+            }
+            const int hour = (int)diff / 3600;
+            const int min = ((int)diff % 3600) / 60;
+            const int sec = (int)diff % 60;
+
+            sprintf_s(title, 80, "%d%d:%d%d:%d%d - CClock (Timer Mode)", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
+            SDL_SetWindowTitle(window, title);
+
+            sprintf_s(timeStr, 80, "%d%d:%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
+            render_text(renderer, font512, timeStr, ttfDestRect.x, ttfDestRect.y, chronoColor);
+
+            const char* dateStr = "Timer Mode: ";
+            render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40, chronoColor);
+
+        }
 
 
-        char dateStr[80];
-        sprintf_s(dateStr, 80, "%s %d %s %d", dayName[tm.tm_wday], tm.tm_mday, monthName[tm.tm_mon], 1900 + tm.tm_year);
-        render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40);
-        
         // Add window transparency (Magenta will be see-through)
         MakeWindowTransparent(window, RGB(0, 0, 0));
 
@@ -322,7 +448,7 @@ int main(int argc, char** argv) {
 
     TTF_CloseFont(font512);
     TTF_CloseFont(font64);
-    
+
     TTF_Quit();
 
     /* Frees memory */
