@@ -44,6 +44,7 @@ enum CClockContextMenuId {
     CHRONO_MODE_3H_ID,
     CHRONO_MODE_4H_ID,
     CHRONO_MODE_5H_ID,
+    SHADOW_ID,
     EXIT_ID,
 };
 
@@ -187,7 +188,7 @@ void render_digit(SDL_Renderer* renderer, TTF_Font* font, int digit, int* x, int
     render_digit_str(renderer, font, text, x, y);
 }
 
-int show_context_menu(SDL_Window* window, int x, int y) {
+int show_context_menu(SDL_Window* window, int x, int y, bool isShadowEnabled) {
     //Create the popup MENU
     HMENU hpopupMenu = CreatePopupMenu();
     HMENU hSubMenu = CreatePopupMenu();
@@ -205,6 +206,7 @@ int show_context_menu(SDL_Window* window, int x, int y) {
     AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_4H_ID, "4h");
     AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_5H_ID, "5h");
 
+    AppendMenuA(hpopupMenu, isShadowEnabled ? MF_CHECKED: MF_UNCHECKED, SHADOW_ID, "Shadow");
     AppendMenuA(hpopupMenu, MF_STRING, EXIT_ID, "Exit");
 
     //Get the window HWND from SDL_Window
@@ -313,7 +315,8 @@ int main(int argc, char** argv) {
     
     float clockScale = 1.f;
     int textWidth, textHeight;
-    
+    bool shadowEffect = true;
+
     get_clock_text_size(font256, clockScale, &textWidth, &textHeight);
     
     SDL_Rect ttfDestRect = get_clock_position(window, textWidth, textHeight);
@@ -346,7 +349,7 @@ int main(int argc, char** argv) {
                 if (e.button.button == SDL_BUTTON_RIGHT) {
                     int x, y;
                     SDL_GetMouseState(&x, &y);
-                    const bool itemSelected = show_context_menu(window, x, y);
+                    const bool itemSelected = show_context_menu(window, x, y, shadowEffect);
                     if (!itemSelected) {
                         fprintf(stderr, "Context menu failed to show\n");
                     }
@@ -381,6 +384,9 @@ int main(int argc, char** argv) {
                     switch (LOWORD(e.syswm.msg->msg.win.wParam)) {
                     case EXIT_ID:
                         isRunning = false;
+                        break;
+                    case SHADOW_ID:
+                        shadowEffect = !shadowEffect;
                         break;
                     case CHRONO_MODE_10s_ID:
                         mode = CCLOCK_CHRONO;
@@ -477,10 +483,12 @@ int main(int argc, char** argv) {
 
         }
 
-        render_text(renderer, font64, dateStr, ttfDestRect.x + 15 + shadowDateOffset, ttfDestRect.y - 40 + shadowDateOffset, clockScale, shadowColor);
+        if (shadowEffect) {
+            render_text(renderer, font64, dateStr, ttfDestRect.x + 15 + shadowDateOffset, ttfDestRect.y - 40 + shadowDateOffset, clockScale, shadowColor);
+            render_text(renderer, font256, timeStr, ttfDestRect.x + shadowOffset, ttfDestRect.y + shadowOffset, clockScale, shadowColor);
+        }
+
         render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40, clockScale, clockColor);
-            
-        render_text(renderer, font256, timeStr, ttfDestRect.x + shadowOffset, ttfDestRect.y + shadowOffset, clockScale, shadowColor);
         render_text(renderer, font256, timeStr, ttfDestRect.x, ttfDestRect.y, clockScale, clockColor);
 
         // Update the screen
