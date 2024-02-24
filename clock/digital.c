@@ -192,12 +192,7 @@ int show_context_menu(SDL_Window* window, int x, int y) {
     HMENU hpopupMenu = CreatePopupMenu();
     HMENU hSubMenu = CreatePopupMenu();
     //Insert wanted options here
-    /*
-    InsertMenuA(hpopupMenu, 0, MF_BYPOSITION | MF_STRING,
-        CHRONO_MODE_ID, "Set");
-    InsertMenuA(hpopupMenu, 0, MF_BYPOSITION | MF_STRING,
-        EXIT_ID, "Exit");
-    */
+    //we can use AppendMenuA or InsertMenuA
     AppendMenuA(hpopupMenu, MF_STRING, CLOCK_MODE_ID, "Clock Mode");
     AppendMenuA(hpopupMenu, MF_POPUP, (UINT_PTR)hSubMenu, "Chrono Mode");
     AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_10s_ID, "10s");
@@ -248,7 +243,7 @@ static SDL_Rect get_clock_position(SDL_Window* window, int textWidth, int textHe
 
 static void get_text_size(TTF_Font* font, const char* text, float scale, int* textWidth, int* textHeight) {
     if (TTF_SizeText(font, text, textWidth, textHeight) < 0) {
-        printf("Could not retrieve text size\n");
+        fprintf(stderr, "Could not retrieve text size\n");
         exit(EXIT_FAILURE);
     }
     *textWidth *= scale;
@@ -263,7 +258,7 @@ static void get_clock_text_size(TTF_Font* font, float scale, int* textWidth, int
 int main(int argc, char** argv) {
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-        printf("SDL failed to initialise: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL failed to initialise: %s\n", SDL_GetError());
         return 1;
     }
     /* Creates a SDL window */
@@ -317,8 +312,8 @@ int main(int argc, char** argv) {
     }
     
     float clockScale = 1.f;
-    
     int textWidth, textHeight;
+    
     get_clock_text_size(font256, clockScale, &textWidth, &textHeight);
     
     SDL_Rect ttfDestRect = get_clock_position(window, textWidth, textHeight);
@@ -442,38 +437,32 @@ int main(int argc, char** argv) {
 
         char windowTitle[80];
         char timeStr[80];
+        char dateStr[80];
+
         const f32 shadowOffset = 4.f;
         const f32 shadowDateOffset = shadowOffset * .5f;
         const SDL_Color shadowColor = (SDL_Color){ 1, 1, 1, 255 };
+        SDL_Color clockColor = (SDL_Color){ 245, 245, 245, 255 };
 
         if (mode == CCLOCK_CLOCK) {
             const struct tm tm = get_tm();
             const int hour = tm.tm_hour;
             const int min = tm.tm_min;
             const int sec = tm.tm_sec;
-            SDL_Color clockColor = (SDL_Color){ 245, 245, 245, 255 };
 
+            clockColor = (SDL_Color){ 245, 245, 245, 255 };
             sprintf_s(windowTitle, 80, "%d%d:%d%d:%d%d - CClock", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
             SDL_SetWindowTitle(window, windowTitle);
 
             sprintf_s(timeStr, 80, "%d%d:%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
-
-            char dateStr[80];
             sprintf_s(dateStr, 80, "%s %d %s %d", dayName[tm.tm_wday], tm.tm_mday, monthName[tm.tm_mon], 1900 + tm.tm_year);
-
-            render_text(renderer, font64, dateStr, ttfDestRect.x + 15 + shadowDateOffset, ttfDestRect.y - 40+ shadowDateOffset, clockScale, shadowColor);
-            render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40, clockScale, clockColor);
-            
-            render_text(renderer, font256, timeStr, ttfDestRect.x+ shadowOffset, ttfDestRect.y + shadowOffset, clockScale, shadowColor);
-            render_text(renderer, font256, timeStr, ttfDestRect.x, ttfDestRect.y, clockScale, clockColor);
 
         }
         else if (mode == CCLOCK_CHRONO) {
             struct tm currentTm = get_tm();
             double diff = get_tm_diff(&currentTm, &chronoTargetTm);
-            SDL_Color chronoColor = (SDL_Color){ 255, 255, 255, 255 };
             if (diff <= 0) {
-                chronoColor = (SDL_Color){ 255, 87, 51, 255 };
+                clockColor = (SDL_Color){ 255, 87, 51, 255 };
                 diff = 0;
             }
             const int hour = (int)diff / 3600;
@@ -483,15 +472,16 @@ int main(int argc, char** argv) {
             sprintf_s(windowTitle, 80, "%d%d:%d%d:%d%d - CClock (Timer Mode)", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
             SDL_SetWindowTitle(window, windowTitle);
 
+            strcpy_s(dateStr, 13, "Timer Mode: ");
             sprintf_s(timeStr, 80, "%d%d:%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
-            render_text(renderer, font256, timeStr, ttfDestRect.x + shadowOffset, ttfDestRect.y + shadowOffset, clockScale, shadowColor);
-            render_text(renderer, font256, timeStr, ttfDestRect.x, ttfDestRect.y, clockScale, chronoColor);
-
-            const char* dateStr = "Timer Mode: ";
-            render_text(renderer, font64, dateStr, ttfDestRect.x + 15 + shadowDateOffset, ttfDestRect.y - 40 + shadowDateOffset, clockScale, shadowColor);
-            render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40, clockScale, chronoColor);
 
         }
+
+        render_text(renderer, font64, dateStr, ttfDestRect.x + 15 + shadowDateOffset, ttfDestRect.y - 40 + shadowDateOffset, clockScale, shadowColor);
+        render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40, clockScale, clockColor);
+            
+        render_text(renderer, font256, timeStr, ttfDestRect.x + shadowOffset, ttfDestRect.y + shadowOffset, clockScale, shadowColor);
+        render_text(renderer, font256, timeStr, ttfDestRect.x, ttfDestRect.y, clockScale, clockColor);
 
         // Update the screen
         SDL_RenderPresent(renderer);
