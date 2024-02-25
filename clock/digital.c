@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdbool.h>
+#include <math.h>
 
 #if !(_MSC_VER && !__INTEL_COMPILER)
 #define SDL_MAIN_HANDLED //gcc need this line smhw, it basically undef main macro defined by SDL
@@ -26,6 +27,10 @@ typedef uint32_t u32;
 #define DELTA_TIME 1 / FPS
 
 //https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
+
+//TODO:: Add an .ini file to save CClock pos, scale, shadowEffect
+//MAYBE:: Make it compatible with Linux/MacoOS ????
+//TODO:: Maybe when we change the scale of the CClock, we may use different fontSizes instead of full scaling for ex: if default is 256px and scale == .5, we can use 128px
 
 enum CClockMode {
     CCLOCK_CLOCK,
@@ -134,11 +139,6 @@ static void render_text(SDL_Renderer* renderer, TTF_Font* font, const char* date
 
     SDL_DestroyTexture(texture);
     SDL_FreeSurface(surface);
-}
-
-
-static void draw_clock(SDL_Renderer* renderer, TTF_Font* font) {
-    11;
 }
 
 static void render_digit_str(SDL_Renderer* renderer, TTF_Font* font, const char* text, int* x, int* y) {
@@ -257,7 +257,72 @@ static void get_clock_text_size(TTF_Font* font, float scale, int* textWidth, int
     get_text_size(font, placeholder, scale, textWidth, textHeight);
 }
 
+typedef struct {
+    int winX;
+    int winY;
+    f32 clockScale;
+    int shadowEffect;
+} CClockConfig;
+
+static int exists(const char* fname) {
+    FILE* file;
+    if (fopen_s(&file, fname, "r") == 0) //aka if it succeeded
+    {
+        fclose(file);
+        return 1;
+    }
+    return 0;
+}
+
+void write_ini(const char* iniFileName, const CClockConfig* conf) {
+    FILE* f = NULL;
+    fopen_s(&f, iniFileName, "w");
+    if (f != NULL) {
+        fprintf(f, "x=%d\n", conf->winX);
+        fprintf(f, "y=%d\n", conf->winY);
+        fprintf(f, "clockScale=%f\n", conf->clockScale);
+        fprintf(f, "shadow=%d\n", conf->shadowEffect);
+        fclose(f);
+    }
+}
+
+#define MAX_LINE_LENGTH 100
+
+void read_ini(const char* iniFileName, CClockConfig* conf) {
+    FILE* f = NULL;
+    fopen_s(&f, iniFileName, "r");
+
+    if (f != NULL) {
+        char line[MAX_LINE_LENGTH];
+        while (fgets(line, sizeof(line), f)) {
+            if (strstr(line, "x=") != NULL) sscanf_s(line, "x=%d", &conf->winX);
+            else if (strstr(line, "y=") != NULL)            sscanf_s(line, "y=%d", &conf->winY);
+            else if (strstr(line, "clockScale=") != NULL)   sscanf_s(line, "clockScale=%f", &conf->clockScale);
+            else if (strstr(line, "shadow=") != NULL)       sscanf_s(line, "shadow=%d", &conf->shadowEffect);
+        }
+
+        fclose(f);
+    }
+}
+
+
 int main(int argc, char** argv) {
+
+    const char* iniFileName = "CClock.ini";
+    //before creating the window we check if the .ini file exist and or create it
+    CClockConfig config = {
+        .winX = SDL_WINDOWPOS_CENTERED,
+        .winY = SDL_WINDOWPOS_CENTERED,
+        .clockScale = 1.f,
+        .shadowEffect = true
+    };
+
+    if (exists(iniFileName)) {
+        read_ini(iniFileName, &config);
+    }
+    else {
+        write_ini(iniFileName, &config);
+    }
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
         fprintf(stderr, "SDL failed to initialise: %s\n", SDL_GetError());
@@ -265,8 +330,8 @@ int main(int argc, char** argv) {
     }
     /* Creates a SDL window */
     SDL_Window* window = SDL_CreateWindow("CClock", /* Title of the SDL window */
-        SDL_WINDOWPOS_CENTERED, /* Position x of the window */
-        SDL_WINDOWPOS_CENTERED, /* Position y of the window */
+        config.winX, /* Position x of the window */
+        config.winY, /* Position y of the window */
         WINDOW_WIDTH, /* Width of the window in pixels */
         WINDOW_HEIGHT, /* Height of the window in pixels */
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS); /* Additional flag(s) */
@@ -313,11 +378,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    float clockScale = 1.f;
     int textWidth, textHeight;
-    bool shadowEffect = true;
-
-    get_clock_text_size(font256, clockScale, &textWidth, &textHeight);
+    
+    get_clock_text_size(font256, config.clockScale, &textWidth, &textHeight);
     
     SDL_Rect ttfDestRect = get_clock_position(window, textWidth, textHeight);
 
@@ -332,6 +395,10 @@ int main(int argc, char** argv) {
     SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
     while (isRunning) {
 
+        int xx, yy;
+        SDL_GetWindowPosition(window, &xx, &yy);
+        printf("(%d,%d)\n", xx, yy);
+
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_KEYDOWN) {
@@ -344,12 +411,16 @@ int main(int argc, char** argv) {
                     ttfDestRect.x = (e.window.data1 - textWidth) / 2;
                     ttfDestRect.y = (e.window.data2 - textHeight) / 2;
                 }
+                else if (e.window.event == SDL_WINDOWEVENT_MOVED) {
+                    config.winX = e.window.data1;
+                    config.winY = e.window.data2;
+                }
             }
             else if (e.type == SDL_MOUSEBUTTONDOWN) {
                 if (e.button.button == SDL_BUTTON_RIGHT) {
                     int x, y;
                     SDL_GetMouseState(&x, &y);
-                    const bool itemSelected = show_context_menu(window, x, y, shadowEffect);
+                    const bool itemSelected = show_context_menu(window, x, y, config.shadowEffect);
                     if (!itemSelected) {
                         fprintf(stderr, "Context menu failed to show\n");
                     }
@@ -358,16 +429,16 @@ int main(int argc, char** argv) {
             else if (e.type == SDL_MOUSEWHEEL) {
                 if (e.wheel.y > 0) // scroll up
                 {
-                    if ((clockScale += .1f) > 1.5) clockScale = 1.5f;
+                    if ((config.clockScale += .1f) > 1.5) config.clockScale = 1.5f;
                     // Put code for handling "scroll up" here!
                 }
                 else if (e.wheel.y < 0) // scroll down
                 {
-                    if ((clockScale -= .1f) < 0.5f) clockScale = 0.5f;
+                    if ((config.clockScale -= .1f) < 0.5f) config.clockScale = 0.5f;
                     // Put code for handling "scroll down" here!
                 }
 
-                get_clock_text_size(font256, clockScale, &textWidth, &textHeight);
+                get_clock_text_size(font256, config.clockScale, &textWidth, &textHeight);
                 ttfDestRect = get_clock_position(window, textWidth, textHeight);
             }
             else if (e.type == SDL_SYSWMEVENT) {
@@ -386,7 +457,7 @@ int main(int argc, char** argv) {
                         isRunning = false;
                         break;
                     case SHADOW_ID:
-                        shadowEffect = !shadowEffect;
+                        config.shadowEffect = !config.shadowEffect;
                         break;
                     case CHRONO_MODE_10s_ID:
                         mode = CCLOCK_CHRONO;
@@ -483,19 +554,21 @@ int main(int argc, char** argv) {
 
         }
 
-        if (shadowEffect) {
-            render_text(renderer, font64, dateStr, ttfDestRect.x + 15 + shadowDateOffset, ttfDestRect.y - 40 + shadowDateOffset, clockScale, shadowColor);
-            render_text(renderer, font256, timeStr, ttfDestRect.x + shadowOffset, ttfDestRect.y + shadowOffset, clockScale, shadowColor);
+        if (config.shadowEffect) {
+            render_text(renderer, font64, dateStr, ttfDestRect.x + 15 + shadowDateOffset, ttfDestRect.y - 40 + shadowDateOffset, config.clockScale, shadowColor);
+            render_text(renderer, font256, timeStr, ttfDestRect.x + shadowOffset, ttfDestRect.y + shadowOffset, config.clockScale, shadowColor);
         }
 
-        render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40, clockScale, clockColor);
-        render_text(renderer, font256, timeStr, ttfDestRect.x, ttfDestRect.y, clockScale, clockColor);
+        render_text(renderer, font64, dateStr, ttfDestRect.x + 15, ttfDestRect.y - 40, config.clockScale, clockColor);
+        render_text(renderer, font256, timeStr, ttfDestRect.x, ttfDestRect.y, config.clockScale, clockColor);
 
         // Update the screen
         SDL_RenderPresent(renderer);
 
         SDL_Delay((u32)floor(DELTA_TIME * 1000.0));
     }
+
+    write_ini(iniFileName, &config);
 
     TTF_CloseFont(font256);
     TTF_CloseFont(font64);
