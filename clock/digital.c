@@ -28,30 +28,46 @@ typedef uint32_t u32;
 
 //https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
 
-//TODO:: Add an .ini file to save CClock pos, scale, shadowEffect
 //MAYBE:: Make it compatible with Linux/MacoOS ????
 //TODO:: Maybe when we change the scale of the CClock, we may use different fontSizes instead of full scaling for ex: if default is 256px and scale == .5, we can use 128px
-
+//TODO:: In some cases the clock may freeze and stop updating, usually it happens when we put we pc sleep and awake it later
+//TODO:: When changing something in the Config we need to update the ini right away instead of only at app close
+//TODO:: Link statically with SDL and SDL_TTF
 enum CClockMode {
     CCLOCK_CLOCK,
     CCLOCK_TIMER,
     CCLOCK_CHRONO,
 };
 
-enum CClockContextMenuId {
-    CLOCK_MODE_ID = 1,
-    CHRONO_MODE_10s_ID,
-    CHRONO_MODE_10M_ID,
-    CHRONO_MODE_15M_ID,
-    CHRONO_MODE_30M_ID,
-    CHRONO_MODE_1H_ID,
-    CHRONO_MODE_2H_ID,
-    CHRONO_MODE_3H_ID,
-    CHRONO_MODE_4H_ID,
-    CHRONO_MODE_5H_ID,
-    SHADOW_ID,
-    EXIT_ID,
+enum HMenuCClockContextMenuId {
+    HMENU_CLOCK_MODE_HH_MM_SS_ID = 1,
+    HMENU_CLOCK_MODE_HH_MM_ID,
+    HMENU_CHRONO_MODE_10s_ID,
+    HMENU_CHRONO_MODE_10M_ID,
+    HMENU_CHRONO_MODE_15M_ID,
+    HMENU_CHRONO_MODE_30M_ID,
+    HMENU_CHRONO_MODE_1H_ID,
+    HMENU_CHRONO_MODE_2H_ID,
+    HMENU_CHRONO_MODE_3H_ID,
+    HMENU_CHRONO_MODE_4H_ID,
+    HMENU_CHRONO_MODE_5H_ID,
+    HMENU_SHADOW_ID,
+    HMENU_EXIT_ID,
 };
+
+typedef enum {
+    CCLOCK_STYLE_HH_MM_SS,
+    CCLOCK_STYLE_HH_MM,
+} CClockStyle;
+
+
+typedef struct {
+    int winX;
+    int winY;
+    f32 clockScale;
+    int shadowEffect;
+    CClockStyle style;
+} CClockConfig;
 
 struct tm get_tm() {
     time_t currentTime;
@@ -110,9 +126,10 @@ bool MakeWindowTransparent(SDL_Window* window, COLORREF colorKey) {
 
 SDL_HitTestResult MyHitTestCallback(SDL_Window* win, const SDL_Point* point, void* data) {
     // We'll consider the horz upper part of the window draggable and the bottom part normal
+    (void)data; //we do not use data for now
     int w, h;
     SDL_GetWindowSize(win, &w, &h);
-    SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h * .5 };
+    SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h / 2 };
     if (SDL_PointInRect(point, &rect)) {
         SDL_Log("HIT-TEST: DRAGGABLE\n");
         return SDL_HITTEST_DRAGGABLE;
@@ -131,8 +148,8 @@ static void render_text(SDL_Renderer* renderer, TTF_Font* font, const char* date
     const SDL_Rect textDestRect = {
         .x = x,
         .y = y,
-        .w = textWidth * scale,
-        .h = textHeight * scale,
+        .w = (int) (textWidth * scale),
+        .h = (int) (textHeight * scale),
     };
 
     SDL_RenderCopy(renderer, texture, NULL, &textDestRect);
@@ -190,24 +207,27 @@ void render_digit(SDL_Renderer* renderer, TTF_Font* font, int digit, int* x, int
 
 int show_context_menu(SDL_Window* window, int x, int y, bool isShadowEnabled) {
     //Create the popup MENU
-    HMENU hpopupMenu = CreatePopupMenu();
-    HMENU hSubMenu = CreatePopupMenu();
+    HMENU hmainPopupMenu = CreatePopupMenu();
+    HMENU hClockSubMenu = CreatePopupMenu();
+    HMENU hChronoSubMenu = CreatePopupMenu();
     //Insert wanted options here
     //we can use AppendMenuA or InsertMenuA
-    AppendMenuA(hpopupMenu, MF_STRING, CLOCK_MODE_ID, "Clock Mode");
-    AppendMenuA(hpopupMenu, MF_POPUP, (UINT_PTR)hSubMenu, "Chrono Mode");
-    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_10s_ID, "10s");
-    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_10M_ID, "10min");
-    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_15M_ID, "15min");
-    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_30M_ID, "30min");
-    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_1H_ID, "1h");
-    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_2H_ID, "2h");
-    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_3H_ID, "3h");
-    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_4H_ID, "4h");
-    AppendMenuA(hSubMenu, MF_STRING, CHRONO_MODE_5H_ID, "5h");
+    AppendMenuA(hmainPopupMenu, MF_POPUP, (UINT_PTR)hClockSubMenu, "Clock Mode");
+    AppendMenuA(hClockSubMenu,  MF_STRING, HMENU_CLOCK_MODE_HH_MM_SS_ID, "HH:MM:SS");
+    AppendMenuA(hClockSubMenu,  MF_STRING, HMENU_CLOCK_MODE_HH_MM_ID, "HH:MM");
+    AppendMenuA(hmainPopupMenu, MF_POPUP, (UINT_PTR)hChronoSubMenu, "Chrono Mode");
+    AppendMenuA(hChronoSubMenu, MF_STRING, HMENU_CHRONO_MODE_10s_ID, "10s");
+    AppendMenuA(hChronoSubMenu, MF_STRING, HMENU_CHRONO_MODE_10M_ID, "10min");
+    AppendMenuA(hChronoSubMenu, MF_STRING, HMENU_CHRONO_MODE_15M_ID, "15min");
+    AppendMenuA(hChronoSubMenu, MF_STRING, HMENU_CHRONO_MODE_30M_ID, "30min");
+    AppendMenuA(hChronoSubMenu, MF_STRING, HMENU_CHRONO_MODE_1H_ID, "1h");
+    AppendMenuA(hChronoSubMenu, MF_STRING, HMENU_CHRONO_MODE_2H_ID, "2h");
+    AppendMenuA(hChronoSubMenu, MF_STRING, HMENU_CHRONO_MODE_3H_ID, "3h");
+    AppendMenuA(hChronoSubMenu, MF_STRING, HMENU_CHRONO_MODE_4H_ID, "4h");
+    AppendMenuA(hChronoSubMenu, MF_STRING, HMENU_CHRONO_MODE_5H_ID, "5h");
 
-    AppendMenuA(hpopupMenu, isShadowEnabled ? MF_CHECKED: MF_UNCHECKED, SHADOW_ID, "Shadow");
-    AppendMenuA(hpopupMenu, MF_STRING, EXIT_ID, "Exit");
+    AppendMenuA(hmainPopupMenu, isShadowEnabled ? MF_CHECKED: MF_UNCHECKED, HMENU_SHADOW_ID, "Shadow");
+    AppendMenuA(hmainPopupMenu, MF_STRING, HMENU_EXIT_ID, "Exit");
 
     //Get the window HWND from SDL_Window
     HWND hwnd = get_hwnd(window);
@@ -216,13 +236,14 @@ int show_context_menu(SDL_Window* window, int x, int y, bool isShadowEnabled) {
 
     POINT point = { .x = x, .y = y };
     ClientToScreen(hwnd, &point);
-    const int itemSelected = TrackPopupMenu(hpopupMenu,
+    const int itemSelected = TrackPopupMenu(hmainPopupMenu,
         TPM_BOTTOMALIGN | TPM_LEFTALIGN,
         point.x, point.y, 0, hwnd, NULL);
 
     // Clean up
-    DestroyMenu(hSubMenu);
-    DestroyMenu(hpopupMenu);
+    DestroyMenu(hChronoSubMenu);
+    DestroyMenu(hClockSubMenu);
+    DestroyMenu(hmainPopupMenu);
 
     return itemSelected;
 }
@@ -252,17 +273,29 @@ static void get_text_size(TTF_Font* font, const char* text, float scale, int* te
     *textHeight *= scale;
 }
 
-static void get_clock_text_size(TTF_Font* font, float scale, int* textWidth, int* textHeight) {
+static void get_hh_mm_ss_text_size(TTF_Font* font, float scale, int* textWidth, int* textHeight) {
     const char* placeholder = "00:00:00";
     get_text_size(font, placeholder, scale, textWidth, textHeight);
 }
 
-typedef struct {
-    int winX;
-    int winY;
-    f32 clockScale;
-    int shadowEffect;
-} CClockConfig;
+static void get_hh_mm_text_size(TTF_Font* font, float scale, int* textWidth, int* textHeight) {
+    const char* placeholder = "00:00";
+    get_text_size(font, placeholder, scale, textWidth, textHeight);
+}
+static void get_clock_text_size(enum CClockMode mode, TTF_Font* font, const CClockConfig* clockConfig, int* textWidth, int* textHeight) {
+    if (mode == CCLOCK_CLOCK) {
+        if (clockConfig->style == CCLOCK_STYLE_HH_MM_SS) {
+            get_hh_mm_ss_text_size(font, clockConfig->clockScale, textWidth, textHeight);
+        }
+        else if (clockConfig->style == CCLOCK_STYLE_HH_MM) {
+            get_hh_mm_text_size(font, clockConfig->clockScale, textWidth, textHeight);
+        }
+    }
+    else {
+        get_hh_mm_ss_text_size(font, clockConfig->clockScale, textWidth, textHeight);
+    }
+
+}
 
 static int exists(const char* fname) {
     FILE* file;
@@ -306,28 +339,32 @@ void read_ini(const char* iniFileName, CClockConfig* conf) {
 }
 
 
+const char* dayName[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+
+const char* monthName[] = { "January", "February", "March", "April", "May", "June", "July",
+                 "August", "September", "October", "November", "December" };
+
+const char* iniFileName = "CClock.ini";
+
 int main(int argc, char** argv) {
 
-    const char* iniFileName = "CClock.ini";
-    //before creating the window we check if the .ini file exist and or create it
     CClockConfig config = {
         .winX = SDL_WINDOWPOS_CENTERED,
         .winY = SDL_WINDOWPOS_CENTERED,
         .clockScale = 1.f,
-        .shadowEffect = true
+        .shadowEffect = true,
+        .style = CCLOCK_STYLE_HH_MM,
     };
-
-    if (exists(iniFileName)) {
-        read_ini(iniFileName, &config);
-    }
-    else {
-        write_ini(iniFileName, &config);
-    }
+    //before creating the window we check if the .ini file exist and or create it
+    if (exists(iniFileName)) read_ini(iniFileName, &config);
+    else                     write_ini(iniFileName, &config);
+    
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
         fprintf(stderr, "SDL failed to initialise: %s\n", SDL_GetError());
         return 1;
     }
+
     /* Creates a SDL window */
     SDL_Window* window = SDL_CreateWindow("CClock", /* Title of the SDL window */
         config.winX, /* Position x of the window */
@@ -364,7 +401,7 @@ int main(int argc, char** argv) {
 #endif
 
     if (TTF_Init() < 0) {
-        printf("Could not init SDL_ttf\n");
+        fprintf(stderr, "Could not init SDL_ttf\n");
         return 1;
     }
 
@@ -374,30 +411,22 @@ int main(int argc, char** argv) {
     TTF_Font* font256 = TTF_OpenFont("digital-mono.ttf", 256);
     TTF_Font* font64 = TTF_OpenFont("digital-mono.ttf", 48);
     if (!font256 || !font64) {
-        printf("Could not load font\n");
+        fprintf(stderr, "Could not load font\n");
         return 1;
     }
     
-    int textWidth, textHeight;
-    
-    get_clock_text_size(font256, config.clockScale, &textWidth, &textHeight);
-    
-    SDL_Rect ttfDestRect = get_clock_position(window, textWidth, textHeight);
-
-    const char* dayName[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
-
-    const char* monthName[] = { "January", "February", "March", "April", "May", "June", "July",
-                     "August", "September", "October", "November", "December" };
-
     enum CClockMode mode = CCLOCK_CLOCK;
     struct tm chronoTargetTm = get_tm();
 
+
+    int textWidth = 0, textHeight = 0;
+    
+    get_clock_text_size(mode, font256, &config, &textWidth, &textHeight);
+    SDL_Rect ttfDestRect = get_clock_position(window, textWidth, textHeight);
+
+
     SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
     while (isRunning) {
-
-        int xx, yy;
-        SDL_GetWindowPosition(window, &xx, &yy);
-        printf("(%d,%d)\n", xx, yy);
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -407,11 +436,7 @@ int main(int argc, char** argv) {
                 }
             }
             else if (e.type == SDL_WINDOWEVENT) {
-                if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
-                    ttfDestRect.x = (e.window.data1 - textWidth) / 2;
-                    ttfDestRect.y = (e.window.data2 - textHeight) / 2;
-                }
-                else if (e.window.event == SDL_WINDOWEVENT_MOVED) {
+                if (e.window.event == SDL_WINDOWEVENT_MOVED) {
                     config.winX = e.window.data1;
                     config.winY = e.window.data2;
                 }
@@ -438,7 +463,7 @@ int main(int argc, char** argv) {
                     // Put code for handling "scroll down" here!
                 }
 
-                get_clock_text_size(font256, config.clockScale, &textWidth, &textHeight);
+                get_clock_text_size(mode, font256, &config, &textWidth, &textHeight);
                 ttfDestRect = get_clock_position(window, textWidth, textHeight);
             }
             else if (e.type == SDL_SYSWMEVENT) {
@@ -453,52 +478,62 @@ int main(int argc, char** argv) {
 #endif
                 if (e.syswm.msg->msg.win.msg == WM_COMMAND) {
                     switch (LOWORD(e.syswm.msg->msg.win.wParam)) {
-                    case EXIT_ID:
+                    case HMENU_EXIT_ID:
                         isRunning = false;
                         break;
-                    case SHADOW_ID:
+                    case HMENU_SHADOW_ID:
                         config.shadowEffect = !config.shadowEffect;
                         break;
-                    case CHRONO_MODE_10s_ID:
+                    case HMENU_CHRONO_MODE_10s_ID:
                         mode = CCLOCK_CHRONO;
                         chronoTargetTm = get_tm_chrono(10);
                         break;
-                    case CHRONO_MODE_10M_ID:
+                    case HMENU_CHRONO_MODE_10M_ID:
                         mode = CCLOCK_CHRONO;
                         chronoTargetTm = get_tm_chrono(60 * 10);
                         break;
-                    case CHRONO_MODE_15M_ID:
+                    case HMENU_CHRONO_MODE_15M_ID:
                         mode = CCLOCK_CHRONO;
                         chronoTargetTm = get_tm_chrono(60 * 15);
                         break;
-                    case CHRONO_MODE_30M_ID:
+                    case HMENU_CHRONO_MODE_30M_ID:
                         mode = CCLOCK_CHRONO;
                         chronoTargetTm = get_tm_chrono(60 * 30);
                         break;
-                    case CHRONO_MODE_1H_ID:
+                    case HMENU_CHRONO_MODE_1H_ID:
                         mode = CCLOCK_CHRONO;
                         chronoTargetTm = get_tm_chrono(3600);
                         break;
-                    case CHRONO_MODE_2H_ID:
+                    case HMENU_CHRONO_MODE_2H_ID:
                         mode = CCLOCK_CHRONO;
                         chronoTargetTm = get_tm_chrono(2 * 3600);
                         break;
-                    case CHRONO_MODE_3H_ID:
+                    case HMENU_CHRONO_MODE_3H_ID:
                         mode = CCLOCK_CHRONO;
                         chronoTargetTm = get_tm_chrono(3 * 3600);
                         break;
-                    case CHRONO_MODE_4H_ID:
+                    case HMENU_CHRONO_MODE_4H_ID:
                         mode = CCLOCK_CHRONO;
                         chronoTargetTm = get_tm_chrono(4 * 3600);
                         break;
-                    case CHRONO_MODE_5H_ID:
+                    case HMENU_CHRONO_MODE_5H_ID:
                         mode = CCLOCK_CHRONO;
                         chronoTargetTm = get_tm_chrono(5 * 3600);
                         break;
-                    case CLOCK_MODE_ID:
+                    case HMENU_CLOCK_MODE_HH_MM_SS_ID:
                         mode = CCLOCK_CLOCK;
+                        config.style = CCLOCK_STYLE_HH_MM_SS;
+                        break;
+                    case HMENU_CLOCK_MODE_HH_MM_ID:
+                        mode = CCLOCK_CLOCK;
+                        config.style = CCLOCK_STYLE_HH_MM;
                         break;
                     }
+                    
+                    get_clock_text_size(mode, font256, &config, &textWidth, &textHeight);
+                    ttfDestRect = get_clock_position(window, textWidth, textHeight);
+                    
+
                 }
             }
             else if (e.type == SDL_QUIT) {
@@ -516,8 +551,8 @@ int main(int argc, char** argv) {
         char timeStr[80];
         char dateStr[80];
 
-        const f32 shadowOffset = 4.f;
-        const f32 shadowDateOffset = shadowOffset * .5f;
+        const int shadowOffset = 4;
+        const int shadowDateOffset = shadowOffset / 2;
         const SDL_Color shadowColor = (SDL_Color){ 1, 1, 1, 255 };
         SDL_Color clockColor = (SDL_Color){ 245, 245, 245, 255 };
 
@@ -530,13 +565,18 @@ int main(int argc, char** argv) {
             clockColor = (SDL_Color){ 245, 245, 245, 255 };
             sprintf_s(windowTitle, 80, "%d%d:%d%d:%d%d - CClock", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
             SDL_SetWindowTitle(window, windowTitle);
+            if (config.style == CCLOCK_STYLE_HH_MM) {
+                sprintf_s(timeStr, 80, "%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10);
+            }
+            else {
+                sprintf_s(timeStr, 80, "%d%d:%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
+            }
 
-            sprintf_s(timeStr, 80, "%d%d:%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
             sprintf_s(dateStr, 80, "%s %d %s %d", dayName[tm.tm_wday], tm.tm_mday, monthName[tm.tm_mon], 1900 + tm.tm_year);
 
         }
         else if (mode == CCLOCK_CHRONO) {
-            struct tm currentTm = get_tm();
+            const struct tm currentTm = get_tm();
             double diff = get_tm_diff(&currentTm, &chronoTargetTm);
             if (diff <= 0) {
                 clockColor = (SDL_Color){ 255, 87, 51, 255 };
