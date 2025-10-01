@@ -16,6 +16,8 @@
 #define NOMINMAX
 #include <windows.h>
 
+#include <Shobjidl.h>
+
 #define WINDOW_WIDTH 1600
 #define WINDOW_HEIGHT 350
 
@@ -92,12 +94,12 @@ struct tm get_tm_chrono(unsigned long offsetBySeconds) {
 }
 
 // return time difference in seconds
-double get_tm_diff(struct tm* lhs, struct tm* rhs) {
+double get_tm_diff(const struct tm* lhs, const struct tm* rhs) {
 
-    time_t t1 = mktime(lhs);
-    time_t t2 = mktime(rhs);
+    const time_t t1 = mktime(lhs);
+    const time_t t2 = mktime(rhs);
 
-    double diff = difftime(t2, t1);
+    const double diff = difftime(t2, t1);
 
     return diff;
 }
@@ -338,6 +340,45 @@ void read_ini(const char* iniFileName, CClockConfig* conf) {
     }
 }
 
+static ITaskbarList3* g_taskBar = NULL;
+
+static void taskbar_init(SDL_Window* window) {
+    HWND hwnd = get_hwnd(window);
+
+    HRESULT hr = CoCreateInstance(&CLSID_TaskbarList, NULL,
+        CLSCTX_INPROC_SERVER,
+        &IID_ITaskbarList3,
+        (void**)&g_taskBar);
+
+    if (SUCCEEDED(hr)) {
+        g_taskBar->lpVtbl->HrInit(g_taskBar);
+    }
+}
+
+static void taskbar_set_progress(SDL_Window* window, uint64_t completed, uint64_t total) {
+    HWND hwnd = get_hwnd(window);
+    if (!g_taskBar) return;
+    enum TBPFLAG flag = TBPF_NORMAL;
+    g_taskBar->lpVtbl->SetProgressState(g_taskBar, hwnd, flag);
+    g_taskBar->lpVtbl->SetProgressValue(g_taskBar, hwnd, completed, total);
+}
+
+static void taskbar_stop_progress(SDL_Window* window) {
+    HWND hwnd = get_hwnd(window);
+    if (!g_taskBar) return;
+    g_taskBar->lpVtbl->SetProgressState(g_taskBar, hwnd, TBPF_NOPROGRESS);
+}
+
+static void taskbar_flash_done(SDL_Window* window) {
+    FLASHWINFO fi;
+    fi.cbSize = sizeof(FLASHWINFO);
+    fi.hwnd = get_hwnd(window);
+    fi.dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG;
+    fi.uCount = 0;
+    fi.dwTimeout = 0;
+    FlashWindowEx(&fi);
+}
+
 
 const char* dayName[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
 
@@ -417,6 +458,7 @@ int main(int argc, char** argv) {
     
     enum CClockMode mode = CCLOCK_CLOCK;
     struct tm chronoTargetTm = get_tm();
+    struct tm startTimeTm = get_tm();
 
 
     int textWidth = 0, textHeight = 0;
@@ -425,6 +467,8 @@ int main(int argc, char** argv) {
     SDL_Rect ttfDestRect = get_clock_position(window, textWidth, textHeight);
 
 
+    taskbar_init(window);
+    
     SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
     while (isRunning) {
 
@@ -530,6 +574,13 @@ int main(int argc, char** argv) {
                         break;
                     }
                     
+                    if (mode == CCLOCK_CHRONO) {
+                        startTimeTm = get_tm();
+                    }
+                    else {
+                        taskbar_stop_progress(window);
+                    }
+                    
                     get_clock_text_size(mode, font256, &config, &textWidth, &textHeight);
                     ttfDestRect = get_clock_position(window, textWidth, textHeight);
                     
@@ -592,6 +643,13 @@ int main(int argc, char** argv) {
             strcpy_s(dateStr, 13, "Timer Mode: ");
             sprintf_s(timeStr, 80, "%d%d:%d%d:%d%d", hour / 10, hour % 10, min / 10, min % 10, sec / 10, sec % 10);
 
+            double total = get_tm_diff(&startTimeTm, &chronoTargetTm);
+            double completed = total - diff;
+            taskbar_set_progress(window, (uint64_t)completed, (uint64_t)total);
+
+            if (completed >= total) {
+                taskbar_flash_done(window);
+            }
         }
 
         if (config.shadowEffect) {
