@@ -344,8 +344,18 @@ static ITaskbarList3* g_taskBar = NULL;
 
 static void taskbar_init(SDL_Window* window) {
     HWND hwnd = get_hwnd(window);
+    HRESULT hr;
+    
+    hr = CoInitialize(NULL); //Needed to be able to use CoCreateInstance
+    if (!SUCCEEDED(hr)) {
+        fprintf(stderr, "Failed to initialize COM lib");
+        //MessageBox flags: https://learn.microsoft.com/fr-fr/windows/win32/api/winuser/nf-winuser-messagebox
+        MessageBox(hwnd, L"Failed to initialize COM lib", L"Error", MB_OK | MB_ICONERROR | MB_APPLMODAL);
+        exit(-1);
+    }
 
-    HRESULT hr = CoCreateInstance(&CLSID_TaskbarList, NULL,
+    // We should always call CoInitialize before using any Co function: https://devblogs.microsoft.com/oldnewthing/20130419-00/?p=4613
+    hr = CoCreateInstance(&CLSID_TaskbarList, NULL,
         CLSCTX_INPROC_SERVER,
         &IID_ITaskbarList3,
         (void**)&g_taskBar);
@@ -377,6 +387,14 @@ static void taskbar_flash_done(SDL_Window* window) {
     fi.uCount = 0;
     fi.dwTimeout = 0;
     FlashWindowEx(&fi);
+}
+
+static void taskbar_deinit() {
+    if (g_taskBar) {
+        g_taskBar->lpVtbl->Release(g_taskBar);
+        g_taskBar = NULL;
+    }
+    CoUninitialize();
 }
 
 
@@ -672,6 +690,8 @@ int main(int argc, char** argv) {
     TTF_CloseFont(font64);
 
     TTF_Quit();
+
+    taskbar_deinit();
 
     /* Frees memory */
     SDL_DestroyWindow(window);
